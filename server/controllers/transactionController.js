@@ -1,8 +1,9 @@
 const Transaction = require("../models/Transaction");
 const blockchainService = require("../services/blockchainService");
 const { emitTransactionUpdate } = require("../utils/socketManager");
+const { ethers } = require("ethers");
 
-// Hardhat test accounts (for demo — in production these would come from user's wallet)
+// Hardhat test accounts
 const TEST_ACCOUNTS = {
   "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266":
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
@@ -40,33 +41,35 @@ const transactionController = {
     }
   },
 
-  // Send a transaction (legitimate)
+  // Send a transaction
   async sendTransaction(req, res) {
     const { from, to, amount, contractType, privateKey } = req.body;
 
     try {
-      let receipt, txRecord;
+      let receipt, txRecord, signature, nonce, deadline;
+      const chainId = parseInt(process.env.CHAIN_ID || "31337");
 
       if (contractType === "vulnerable") {
-        // Vulnerable: sign without nonce/deadline/chainId
-        const { ethers } = require("ethers");
         const addresses = blockchainService.getAddresses();
         const amountWei = ethers.parseEther(amount);
+
+        // Build message hash WITHOUT nonce/deadline/chainId (vulnerable)
         const messageHash = ethers.solidityPackedKeccak256(
           ["address", "address", "uint256"],
-          [from, to, amountWei],
+          [from, to, amountWei]
         );
 
-        const wallet = new ethers.Wallet(privateKey || TEST_ACCOUNTS[from]);
-        const signature = await wallet.signMessage(
-          ethers.getBytes(messageHash),
+        const wallet = new ethers.Wallet(
+          privateKey || TEST_ACCOUNTS[from],
+          blockchainService.getProvider()
         );
+        signature = await wallet.signMessage(ethers.getBytes(messageHash));
 
         receipt = await blockchainService.executeVulnerableTransfer(
           privateKey || TEST_ACCOUNTS[from],
           to,
           amount,
-          signature,
+          signature
         );
 
         txRecord = await Transaction.create({
@@ -79,17 +82,19 @@ const transactionController = {
           status: "success",
           blockNumber: receipt.blockNumber,
           gasUsed: receipt.gasUsed.toString(),
+          isReplay: false,
         });
 
-        // Mark as used for detection
-        if (req.markTransactionUsed) req.markTransactionUsed();
+        // ✅ Pass signature as argument so middleware stores it correctly
+        if (req.markTransactionUsed) {
+          req.markTransactionUsed(signature, from, undefined, undefined);
+        }
+
       } else {
-        // Secure: include nonce, deadline, chainId
-        const { ethers } = require("ethers");
+        // Secure contract
         const addresses = blockchainService.getAddresses();
-        const chainId = parseInt(process.env.CHAIN_ID || "31337");
-        const nonce = await blockchainService.getNonce(from);
-        const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour
+        nonce = await blockchainService.getNonce(from);
+        deadline = Math.floor(Date.now() / 1000) + 3600;
 
         const messageHash = blockchainService.buildMessageHash(
           from,
@@ -98,13 +103,14 @@ const transactionController = {
           nonce,
           deadline,
           chainId,
-          addresses.secureContract,
+          addresses.secureContract
         );
 
-        const wallet = new ethers.Wallet(privateKey || TEST_ACCOUNTS[from]);
-        const signature = await wallet.signMessage(
-          ethers.getBytes(messageHash),
+        const wallet = new ethers.Wallet(
+          privateKey || TEST_ACCOUNTS[from],
+          blockchainService.getProvider()
         );
+        signature = await wallet.signMessage(ethers.getBytes(messageHash));
 
         receipt = await blockchainService.executeSecureTransfer(
           privateKey || TEST_ACCOUNTS[from],
@@ -112,7 +118,7 @@ const transactionController = {
           amount,
           nonce,
           deadline,
-          signature,
+          signature
         );
 
         txRecord = await Transaction.create({
@@ -128,16 +134,21 @@ const transactionController = {
           status: "success",
           blockNumber: receipt.blockNumber,
           gasUsed: receipt.gasUsed.toString(),
+          isReplay: false,
         });
 
-        if (req.markTransactionUsed) req.markTransactionUsed();
+        // ✅ Pass signature, nonce and chainId so both get marked as used
+        if (req.markTransactionUsed) {
+          req.markTransactionUsed(signature, from, nonce, chainId);
+        }
       }
 
       emitTransactionUpdate({ type: "new_transaction", transaction: txRecord });
-
       res.json({ success: true, data: txRecord });
+
     } catch (err) {
-      const txRecord = await Transaction.create({
+      console.error("sendTransaction error:", err.message);
+      await Transaction.create({
         from,
         to,
         amount,
@@ -152,7 +163,6 @@ const transactionController = {
   async getBalance(req, res) {
     const { address, contractType } = req.params;
     try {
-      // Validate contract type
       if (!["vulnerable", "secure"].includes(contractType)) {
         return res.status(400).json({
           success: false,
@@ -160,12 +170,10 @@ const transactionController = {
         });
       }
 
-      // Check blockchain is initialized
       if (!blockchainService.isInitialized()) {
         return res.status(503).json({
           success: false,
-          message:
-            "Blockchain not initialized. Make sure Hardhat node is running and contracts are deployed.",
+          message: "Blockchain not initialized. Deploy contracts first.",
         });
       }
 
@@ -173,24 +181,21 @@ const transactionController = {
       res.json({ success: true, balance, address, contractType });
     } catch (err) {
       console.error("getBalance error:", err.message);
-      res.status(500).json({
-        success: false,
-        message: err.message,
-      });
+      res.status(500).json({ success: false, message: err.message });
     }
   },
 
   // Deposit funds
   async deposit(req, res) {
     const { address, amount, contractType, privateKey } = req.body;
-    const TEST_ACCOUNTS_MAP = {
-      "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266":
-        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-      "0x70997970C51812dc3A010C7d01b50e0d17dc79C8":
-        "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-    };
     try {
-      const pk = privateKey || TEST_ACCOUNTS_MAP[address];
+      const pk = privateKey || TEST_ACCOUNTS[address];
+      if (!pk) {
+        return res.status(400).json({
+          success: false,
+          message: `No private key found for address ${address}`,
+        });
+      }
       const receipt = await blockchainService.deposit(pk, contractType, amount);
       res.json({
         success: true,
@@ -198,6 +203,7 @@ const transactionController = {
         blockNumber: receipt.blockNumber,
       });
     } catch (err) {
+      console.error("deposit error:", err.message);
       res.status(500).json({ success: false, message: err.message });
     }
   },
