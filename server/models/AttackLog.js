@@ -14,7 +14,8 @@ const attackLogSchema = new mongoose.Schema(
     attemptedTxHash: { type: String },
     detectedAt: {
       type: String,
-      enum: ["smart_contract", "middleware", "frontend"],
+      // ✅ "none" added for when attack succeeds without being detected
+      enum: ["smart_contract", "middleware", "frontend", "none"],
       required: true,
     },
     blocked: { type: Boolean, default: true },
