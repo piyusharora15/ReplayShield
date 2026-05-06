@@ -8,50 +8,46 @@ let preventionEnabled = true;
 const setPreventionEnabled = (val) => { preventionEnabled = val; };
 const isPreventionEnabled = () => preventionEnabled;
 
-/**
- * Core middleware: detects and optionally blocks replay attacks
- * Runs before any transaction is processed
- */
 const replayDetector = async (req, res, next) => {
   const { from, to, amount, nonce, deadline, signature, chainId } = req.body;
 
   const attacksDetected = [];
 
-  // --- DETECTION 1: Signature Replay ---
+  // DETECTION 1: Signature Replay
   if (signature && nonceService.isSignatureUsed(signature)) {
     attacksDetected.push({
       type: "signature_replay",
-      reason: "This exact signature has been used before",
+      reason: "Middleware blocked: Signature already used",
       layer: "middleware",
     });
   }
 
-  // --- DETECTION 2: Nonce Replay ---
+  // DETECTION 2: Nonce Replay
   if (from && nonce !== undefined && chainId) {
     if (nonceService.isNonceUsed(chainId, from, nonce)) {
       attacksDetected.push({
         type: "nonce_replay",
-        reason: `Nonce ${nonce} already used for address ${from} on chain ${chainId}`,
+        reason: `Middleware blocked: Nonce ${nonce} already used for address ${from}`,
         layer: "middleware",
       });
     }
   }
 
-  // --- DETECTION 3: Expired Transaction ---
+  // DETECTION 3: Expired Transaction
   if (deadline && nonceService.isExpired(deadline)) {
     attacksDetected.push({
       type: "expired_tx",
-      reason: `Transaction deadline ${deadline} has passed`,
+      reason: `Middleware blocked: Transaction deadline has passed`,
       layer: "middleware",
     });
   }
 
-  // --- DETECTION 4: Timing-Based Rapid Replay ---
+  // DETECTION 4: Timing-Based Rapid Replay
   if (from && to && amount) {
     if (nonceService.isTimingReplay(from, to, amount)) {
       attacksDetected.push({
         type: "signature_replay",
-        reason: "Identical transaction parameters detected within 5 second window",
+        reason: "Middleware blocked: Identical transaction within 5 second window",
         layer: "middleware",
       });
     }
@@ -67,6 +63,7 @@ const replayDetector = async (req, res, next) => {
       detectedAt: attack.layer,
       blocked: preventionEnabled,
       reason: attack.reason,
+      contractType: req.body.contractType || "vulnerable",
       preventionEnabled,
     });
 
@@ -89,11 +86,18 @@ const replayDetector = async (req, res, next) => {
     });
   }
 
-  // Mark signature and nonce as used AFTER passing (for future detection)
+  // ✅ Key fix: accept signature as parameter instead of using closure variable
+  // because signature is created in transactionController AFTER this middleware runs
   req.replayAttacksDetected = attacksDetected;
-  req.markTransactionUsed = () => {
-    if (signature) nonceService.markSignatureUsed(signature);
-    if (from && nonce !== undefined && chainId) nonceService.markNonceUsed(chainId, from, nonce);
+  req.markTransactionUsed = (actualSignature, actualFrom, actualNonce, actualChainId) => {
+    if (actualSignature) {
+      nonceService.markSignatureUsed(actualSignature);
+      console.log("✅ Signature marked as used:", actualSignature.substring(0, 20) + "...");
+    }
+    if (actualFrom && actualNonce !== undefined && actualChainId) {
+      nonceService.markNonceUsed(actualChainId, actualFrom, actualNonce);
+      console.log("✅ Nonce marked as used:", actualNonce);
+    }
   };
 
   next();
