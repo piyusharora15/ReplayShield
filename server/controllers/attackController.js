@@ -1,9 +1,22 @@
 const AttackLog = require("../models/AttackLog");
 const Transaction = require("../models/Transaction");
 const blockchainService = require("../services/blockchainService");
-const nonceService = require("../services/nonceService");
 const { emitAttackDetected } = require("../utils/socketManager");
 const { isPreventionEnabled } = require("../middleware/replayDetector");
+const nonceService = require("../services/nonceService");
+const { ethers } = require("ethers");
+const fs = require("fs");
+const path = require("path");
+
+// Hardhat test account private keys
+const PRIVATE_KEYS = {
+  "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266":
+    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+  "0x70997970c51812dc3a010c7d01b50e0d17dc79c8":
+    "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+  "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc":
+    "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+};
 
 const attackController = {
   // Get all attack logs
@@ -21,18 +34,15 @@ const attackController = {
     }
   },
 
-  /**
-   * Simulate a replay attack
-   * Takes a previous transaction and tries to replay it
-   */
   async simulateReplayAttack(req, res) {
     const { originalTxId, attackType } = req.body;
 
     try {
-      // Get the original transaction
       const originalTx = await Transaction.findById(originalTxId);
       if (!originalTx) {
-        return res.status(404).json({ success: false, message: "Original transaction not found" });
+        return res
+          .status(404)
+          .json({ success: false, message: "Original transaction not found" });
       }
 
       const preventionOn = isPreventionEnabled();
@@ -44,21 +54,82 @@ const attackController = {
         reason: null,
       };
 
+      // ✅ MIDDLEWARE-LEVEL CHECK INSIDE ATTACK CONTROLLER
+      // When prevention is ON, check if signature was already used
+      if (preventionOn && originalTx.signature) {
+        if (nonceService.isSignatureUsed(originalTx.signature)) {
+          attackResult.blocked = true;
+          attackResult.reason = "Middleware blocked: Signature already used";
+
+          // Log it
+          const log = await AttackLog.create({
+            attackType: attackResult.attackType,
+            attackerAddress: originalTx.from,
+            victimAddress: originalTx.from,
+            replayedSignature: originalTx.signature,
+            originalTxHash: originalTx.txHash,
+            detectedAt: "middleware",
+            blocked: true,
+            reason: attackResult.reason,
+            contractType: originalTx.contractType,
+            preventionEnabled: preventionOn,
+          });
+
+          emitAttackDetected({
+            id: log._id,
+            attackType: attackResult.attackType,
+            blocked: true,
+            reason: attackResult.reason,
+            contractType: originalTx.contractType,
+          });
+
+          return res.json({ success: true, data: attackResult, log });
+        }
+      }
+
+      // ✅ Get private key of the ORIGINAL signer (not attacker account)
+      const fromAddress = originalTx.from.toLowerCase();
+      const privateKey = PRIVATE_KEYS[fromAddress];
+
+      if (!privateKey) {
+        return res.status(400).json({
+          success: false,
+          message: `No private key found for address ${originalTx.from}`,
+        });
+      }
+
+      const provider = blockchainService.getProvider();
+      const signer = new ethers.Wallet(privateKey, provider);
+      const addresses = blockchainService.getAddresses();
+
       if (originalTx.contractType === "vulnerable") {
-        // Try to replay on vulnerable contract — may succeed if prevention is off
+        const vulnerableABI = JSON.parse(
+          fs.readFileSync(
+            path.join(__dirname, "../config/abis/VulnerableTransfer.json")
+          )
+        );
+
+        const contract = new ethers.Contract(
+          addresses.vulnerableContract,
+          vulnerableABI,
+          signer
+        );
+
         try {
-          const receipt = await blockchainService.executeVulnerableTransfer(
-            // Use a different test account as the "attacker"
-            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+          // Replay the EXACT same signature
+          const tx = await contract.transfer(
             originalTx.to,
-            originalTx.amount,
+            ethers.parseEther(originalTx.amount),
             originalTx.signature
           );
+          const receipt = await tx.wait();
 
           attackResult.blocked = false;
-          attackResult.reason = "ATTACK SUCCEEDED — Vulnerable contract has no replay protection";
+          attackResult.reason =
+            "ATTACK SUCCEEDED — Vulnerable contract has no replay protection";
           attackResult.txHash = receipt.hash;
 
+          // Save replayed transaction
           await Transaction.create({
             txHash: receipt.hash,
             from: originalTx.from,
@@ -71,31 +142,46 @@ const attackController = {
           });
         } catch (e) {
           attackResult.blocked = true;
-          attackResult.reason = e.message;
+          attackResult.reason = e.reason || e.message;
         }
+
       } else {
-        // Try to replay on secure contract — should always fail
+        const secureABI = JSON.parse(
+          fs.readFileSync(
+            path.join(__dirname, "../config/abis/SecureTransfer.json")
+          )
+        );
+
+        const contract = new ethers.Contract(
+          addresses.secureContract,
+          secureABI,
+          signer
+        );
+
         try {
-          await blockchainService.executeSecureTransfer(
-            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+          const tx = await contract.secureTransfer(
             originalTx.to,
-            originalTx.amount,
+            ethers.parseEther(originalTx.amount),
             originalTx.nonce,
             originalTx.deadline,
             originalTx.signature
           );
+          await tx.wait();
+
           attackResult.blocked = false;
-          attackResult.reason = "Unexpected: attack succeeded despite secure contract";
+          attackResult.reason =
+            "Unexpected: attack succeeded despite secure contract";
         } catch (e) {
           attackResult.blocked = true;
-          attackResult.reason = "Secure contract blocked: " + e.message;
+          attackResult.reason =
+            "Secure contract blocked: " + (e.reason || e.message);
         }
       }
 
       // Log the attack
       const log = await AttackLog.create({
         attackType: attackResult.attackType,
-        attackerAddress: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        attackerAddress: originalTx.from,
         victimAddress: originalTx.from,
         replayedSignature: originalTx.signature,
         originalTxHash: originalTx.txHash,
@@ -116,6 +202,7 @@ const attackController = {
 
       res.json({ success: true, data: attackResult, log });
     } catch (err) {
+      console.error("simulateReplayAttack error:", err.message);
       res.status(500).json({ success: false, message: err.message });
     }
   },
