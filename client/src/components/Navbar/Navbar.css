@@ -51,3 +51,16 @@
 .connection-dot { font-size: 13px; }
 .connection-dot.connected { color: #10b981; }
 .connection-dot.disconnected { color: #9ca3af; }
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;        /* ← add this */
+  user-select: none;      /* ← add this */
+}
+
+.navbar-brand:hover .brand-title {
+  color: #60a5fa;
+  transition: color 0.2s;
+}

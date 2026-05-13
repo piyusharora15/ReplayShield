@@ -14,7 +14,11 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
   return (
     <nav className="navbar">
-      <div className="navbar-brand">
+      <div
+        className="navbar-brand"
+        onClick={() => setActiveTab("dashboard")}
+        title="Go to Home"
+      >
         <span className="brand-icon">🔐</span>
         <span className="brand-title">Replay Attack Detector</span>
       </div>
