@@ -12,7 +12,8 @@ const transactionSchema = new mongoose.Schema(
     chainId: { type: Number },
     contractType: {
       type: String,
-      enum: ["vulnerable", "secure"],
+      enum: ["vulnerable", "secure", "unknown", "none"],
+      default: "vulnerable",
       required: true,
     },
     status: {
@@ -24,6 +25,7 @@ const transactionSchema = new mongoose.Schema(
     gasUsed: { type: String },
     timestamp: { type: Date, default: Date.now },
     isReplay: { type: Boolean, default: false },
+    isAutoScan: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
