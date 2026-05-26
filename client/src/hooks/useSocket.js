@@ -9,24 +9,50 @@ export const useSocket = () => {
   const [preventionStatus, setPreventionStatus] = useState(true);
 
   useEffect(() => {
-    socketRef.current = io("http://localhost:5000", { transports: ["websocket"] });
+    try {
+      socketRef.current = io("http://localhost:5000", {
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 2000,
+        timeout: 5000,
+        forceNew: true,
+      });
 
-    socketRef.current.on("connect", () => setIsConnected(true));
-    socketRef.current.on("disconnect", () => setIsConnected(false));
+      socketRef.current.on("connect", () => {
+        console.log("✅ Main socket connected");
+        setIsConnected(true);
+      });
 
-    socketRef.current.on("attack_detected", (data) => {
-      setLastAttack(data);
-    });
+      socketRef.current.on("disconnect", () => {
+        setIsConnected(false);
+      });
 
-    socketRef.current.on("transaction_update", (data) => {
-      setLastTransaction(data);
-    });
+      socketRef.current.on("connect_error", (err) => {
+        console.warn("Main socket error:", err.message);
+        setIsConnected(false);
+      });
 
-    socketRef.current.on("prevention_toggled", (data) => {
-      setPreventionStatus(data.enabled);
-    });
+      socketRef.current.on("attack_detected", (data) => {
+        setLastAttack(data);
+      });
 
-    return () => socketRef.current?.disconnect();
+      socketRef.current.on("transaction_update", (data) => {
+        setLastTransaction(data);
+      });
+
+      socketRef.current.on("prevention_toggled", (data) => {
+        setPreventionStatus(data.enabled);
+      });
+    } catch (err) {
+      console.warn("Socket init error:", err.message);
+    }
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
   }, []);
 
   return { isConnected, lastAttack, lastTransaction, preventionStatus };
