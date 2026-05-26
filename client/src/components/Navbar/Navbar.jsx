@@ -3,6 +3,7 @@ import "./Navbar.css";
 
 const tabs = [
   { id: "dashboard", label: "📊 Dashboard" },
+  { id: "autoscan", label: "🤖 AutoScan" },
   { id: "transactions", label: "💸 Transactions" },
   { id: "simulator", label: "⚔️ Attack Simulator" },
   { id: "logs", label: "📋 Attack Logs" },
