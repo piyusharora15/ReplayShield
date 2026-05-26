@@ -4,7 +4,12 @@ const attackLogSchema = new mongoose.Schema(
   {
     attackType: {
       type: String,
-      enum: ["signature_replay", "nonce_replay", "cross_chain_replay", "expired_tx"],
+      enum: [
+        "signature_replay",
+        "nonce_replay",
+        "cross_chain_replay",
+        "expired_tx",
+      ],
       required: true,
     },
     attackerAddress: { type: String, lowercase: true },
@@ -20,11 +25,16 @@ const attackLogSchema = new mongoose.Schema(
     },
     blocked: { type: Boolean, default: true },
     reason: { type: String },
-    contractType: { type: String, enum: ["vulnerable", "secure"] },
+    contractType: {
+      type: String,
+      enum: ["vulnerable", "secure", "none", "unknown"],
+      default: "vulnerable",
+    },
     preventionEnabled: { type: Boolean, default: true },
+    isAutoScan: { type: Boolean, default: false },
     timestamp: { type: Date, default: Date.now },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("AttackLog", attackLogSchema);
