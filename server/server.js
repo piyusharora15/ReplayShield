@@ -10,6 +10,7 @@ const { initSocketManager } = require("./utils/socketManager");
 const transactionRoutes = require("./routes/transactionRoutes");
 const attackRoutes = require("./routes/attackRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const autoScanRoutes = require("./routes/autoScanRoutes");
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -17,9 +18,12 @@ const httpServer = http.createServer(app);
 // Socket.IO setup
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
-    methods: ["GET", "POST"],
+     origin: "*",  // ✅ Allow all origins for development
+     methods: ["GET", "POST", "DELETE"]
   },
+    allowEIO3: true,
+    pingTimeout: 60000,
+    pingInterval: 25000,
 });
 
 // Initialize socket manager (so routes can emit events)
@@ -36,6 +40,7 @@ connectDB();
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/attacks", attackRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/autoscan", autoScanRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
