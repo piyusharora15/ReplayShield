@@ -1,4 +1,10 @@
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import { dashboardAPI } from "../services/api";
 import { useSocket } from "../hooks/useSocket";
 
@@ -8,23 +14,45 @@ export const AppProvider = ({ children }) => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const { isConnected, lastAttack, lastTransaction, preventionStatus } = useSocket();
+
+  // ✅ Wrap useSocket in try-catch via the hook itself
+  const { isConnected, lastAttack, lastTransaction, preventionStatus } =
+    useSocket();
 
   const fetchStats = useCallback(async () => {
     try {
       const res = await dashboardAPI.getStats();
       setStats(res.data.data);
     } catch (err) {
-      console.error("Stats fetch error:", err);
+      console.error("Stats fetch error:", err.message);
+      // ✅ Don't crash — just set empty stats
+      setStats({
+        transactions: { total: 0, successful: 0, failed: 0 },
+        attacks: {
+          total: 0,
+          blocked: 0,
+          successful: 0,
+          blockRate: 0,
+          byType: [],
+        },
+        preventionEnabled: true,
+        recentAttacks: [],
+        recentTransactions: [],
+      });
     }
   }, []);
 
-  // Refresh stats on new attacks or transactions
   useEffect(() => {
     fetchStats();
-  }, [lastAttack, lastTransaction, fetchStats]);
+  }, [fetchStats]);
 
-  // Show notification on attack detection
+  // ✅ Only refetch when lastAttack or lastTransaction changes
+  useEffect(() => {
+    if (lastAttack || lastTransaction) {
+      fetchStats();
+    }
+  }, [lastAttack, lastTransaction]);
+
   useEffect(() => {
     if (lastAttack) {
       const notification = {
@@ -40,8 +68,12 @@ export const AppProvider = ({ children }) => {
   }, [lastAttack]);
 
   const togglePrevention = async (enabled) => {
-    await dashboardAPI.togglePrevention(enabled);
-    await fetchStats();
+    try {
+      await dashboardAPI.togglePrevention(enabled);
+      await fetchStats();
+    } catch (err) {
+      console.error("Toggle prevention error:", err.message);
+    }
   };
 
   const dismissNotification = (id) => {
@@ -49,10 +81,18 @@ export const AppProvider = ({ children }) => {
   };
 
   return (
-    <AppContext.Provider value={{
-      stats, loading, notifications, isConnected, preventionStatus,
-      fetchStats, togglePrevention, dismissNotification,
-    }}>
+    <AppContext.Provider
+      value={{
+        stats,
+        loading,
+        notifications,
+        isConnected,
+        preventionStatus,
+        fetchStats,
+        togglePrevention,
+        dismissNotification,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
