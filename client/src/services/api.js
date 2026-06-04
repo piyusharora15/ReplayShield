@@ -21,10 +21,3 @@ export const attackAPI = {
   simulate: (data) => API.post("/attacks/simulate", data),
   clearLogs: () => API.delete("/attacks/logs"),
 };
-
-
-export const autoScanAPI = {
-  start: (data) => API.post("/autoscan/start", data),
-  reset: () => API.delete("/autoscan/reset"),
-  status: () => API.get("/autoscan/status"),
-};
