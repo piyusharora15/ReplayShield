@@ -9,8 +9,8 @@ const { initSocketManager } = require("./utils/socketManager");
 // Routes
 const transactionRoutes = require("./routes/transactionRoutes");
 const attackRoutes = require("./routes/attackRoutes");
-const dashboardRoutes = require("./routes/dashboardRoutes");
-const autoScanRoutes = require("./routes/autoScanRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes")
+const simulationRoutes = require("./routes/simulationRoutes");
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -40,8 +40,7 @@ connectDB();
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/attacks", attackRoutes);
 app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/autoscan", autoScanRoutes);
-
+app.use("/api/simulation", simulationRoutes);
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
