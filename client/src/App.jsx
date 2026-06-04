@@ -5,7 +5,7 @@ import Dashboard from "./components/Dashboard/Dashboard";
 import TransactionPanel from "./components/TransactionPanel/TransactionPanel";
 import AttackSimulator from "./components/AttackSimulator/AttackSimulator";
 import AttackLog from "./components/AttackLog/AttackLog";
-import AutoScan from "./components/AutoScan/AutoScan";
+import LiveSimulation from "./components/LiveSimulation/LiveSimulation";
 import "./App.css";
 
 export default function App() {
@@ -17,7 +17,7 @@ export default function App() {
         <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
         <main className="main-content">
           {activeTab === "dashboard" && <Dashboard />}
-          {activeTab === "autoscan" && <AutoScan />}
+          {activeTab === "simulation" && <LiveSimulation />}
           {activeTab === "transactions" && <TransactionPanel />}
           {activeTab === "simulator" && <AttackSimulator />}
           {activeTab === "logs" && <AttackLog />}
