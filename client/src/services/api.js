@@ -21,3 +21,10 @@ export const attackAPI = {
   simulate: (data) => API.post("/attacks/simulate", data),
   clearLogs: () => API.delete("/attacks/logs"),
 };
+
+export const sophisticatedAPI = {
+  getVault: () => API.get("/sophisticated/vault"),
+  clearVault: () => API.delete("/sophisticated/vault"),
+  startSurveillance: (data) => API.post("/sophisticated/surveillance", data),
+  launchAttack: (data) => API.post("/sophisticated/attack", data),
+};
