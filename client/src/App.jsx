@@ -6,6 +6,7 @@ import TransactionPanel from "./components/TransactionPanel/TransactionPanel";
 import AttackSimulator from "./components/AttackSimulator/AttackSimulator";
 import AttackLog from "./components/AttackLog/AttackLog";
 import LiveSimulation from "./components/LiveSimulation/LiveSimulation";
+import SophisticatedAttacker from "./components/SophisticatedAttacker/SophisticatedAttacker";
 import "./App.css";
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
           {activeTab === "simulation" && <LiveSimulation />}
           {activeTab === "transactions" && <TransactionPanel />}
           {activeTab === "simulator" && <AttackSimulator />}
+          {activeTab === "sophisticated" && <SophisticatedAttacker />}
           {activeTab === "logs" && <AttackLog />}
         </main>
       </div>
