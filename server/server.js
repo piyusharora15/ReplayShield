@@ -11,6 +11,7 @@ const transactionRoutes = require("./routes/transactionRoutes");
 const attackRoutes = require("./routes/attackRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes")
 const simulationRoutes = require("./routes/simulationRoutes");
+const sophisticatedAttackerRoutes = require("./routes/sophisticatedAttackerRoutes");
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -41,6 +42,7 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/api/attacks", attackRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/simulation", simulationRoutes);
+app.use("/api/sophisticated", sophisticatedAttackerRoutes);
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
